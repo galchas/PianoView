@@ -18,6 +18,7 @@ import java.util.List;
  * Date : 11/3/17
  * Time : 10:17 AM
  * Description :
+ * Modified and improved by GalCha on 2025-10-19.
  */
 
 @SuppressWarnings("unchecked") public class AutoPlayUtils {

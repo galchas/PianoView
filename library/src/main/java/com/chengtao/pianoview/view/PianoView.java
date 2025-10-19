@@ -11,7 +11,7 @@ import android.os.Handler;
 import android.os.Looper;
 import android.os.Message;
 import android.os.Parcelable;
-import android.support.v4.content.ContextCompat;
+import androidx.core.content.ContextCompat;
 import android.util.AttributeSet;
 import android.util.DisplayMetrics;
 import android.util.Log;
@@ -31,65 +31,68 @@ import java.util.concurrent.CopyOnWriteArrayList;
 
 /**
  * Created by ChengTao on 2016-11-25.
+ * Modified and improved by GalCha on 2025-10-19.
  */
 
 public class PianoView extends View {
   private final static String TAG = "PianoView";
-  //定义钢琴键
+  // Define piano keys
   private Piano piano = null;
   private ArrayList<PianoKey[]> whitePianoKeys;
   private ArrayList<PianoKey[]> blackPianoKeys;
-  //被点击过的钢琴键
+  // Pressed piano keys
   private CopyOnWriteArrayList<PianoKey> pressedKeys = new CopyOnWriteArrayList<>();
-  //画笔
+  // Paint object
   private Paint paint;
-  //定义标识音名的正方形
+  // Square used to display the note name
   private RectF square;
-  //正方形背景颜色
+  // Background colors for the note-name square
   private String pianoColors[] = {
       "#C0C0C0", "#A52A2A", "#FF8C00", "#FFFF00", "#00FA9A", "#00CED1", "#4169E1", "#FFB6C1",
       "#FFEBCD"
   };
-  //播放器工具
+  // Cached parsed colors to avoid Color.parseColor in onDraw loop
+  private int[] pianoColorsInt = null;
+  // Audio player utility
   private AudioUtils utils = null;
-  //上下文
+  // Context
   private Context context;
-  //布局的宽度
+  // Layout width
   private int layoutWidth = 0;
-  //缩放比例
+  // Scale factor
   private float scale = 1;
-  //音频加载接口
+  // Audio loading listener
   private OnLoadAudioListener loadAudioListener;
-  //自动播放接口
+  // Auto-play listener
   private OnPianoAutoPlayListener autoPlayListener;
-  //接口
+  // Piano event listener
   private OnPianoListener pianoListener;
-  //钢琴被滑动的一些属性
+  // Scroll progress properties for the piano view
   private int progress = 0;
-  //设置是否可以点击
+  // Whether keys can be pressed
   private boolean canPress = true;
-  //是否正在自动播放
+  // Whether auto-play is running
   private boolean isAutoPlaying = false;
-  //初始化结束
+  // Initialization finished flag
   private boolean isInitFinish = false;
   private int minRange = 0;
   private int maxRange = 0;
   //
   private int maxStream;
-  //自动播放Handler
+  // Auto-play Handler
   private Handler autoPlayHandler = new Handler(Looper.myLooper()) {
     @Override public void handleMessage(Message msg) {
       handleAutoPlay(msg);
     }
   };
-  //消息ID
+  // Message IDs
   private static final int HANDLE_AUTO_PLAY_START = 0;
   private static final int HANDLE_AUTO_PLAY_END = 1;
   private static final int HANDLE_AUTO_PLAY_BLACK_DOWN = 2;
   private static final int HANDLE_AUTO_PLAY_WHITE_DOWN = 3;
   private static final int HANDLE_AUTO_PLAY_KEY_UP = 4;
 
-  //构造函数
+  // Constructors
   public PianoView(Context context) {
     this(context, null);
   }
@@ -103,22 +106,23 @@ public class PianoView extends View {
     this.context = context;
     paint = new Paint();
     paint.setAntiAlias(true);
-    //初始化画笔
+    // Initialize paint
     paint.setStyle(Paint.Style.FILL);
-    //初始化正方形
+    // Initialize the note-name square rect
     square = new RectF();
+    // Pre-parse default colors to ints
+    parsePianoColorsIfNeeded();
   }
 
   @Override protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
-    Log.e(TAG, "onMeasure");
     Drawable whiteKeyDrawable = ContextCompat.getDrawable(context, R.drawable.white_piano_key);
-    //最小高度
+    // Minimum height
     int whiteKeyHeight = whiteKeyDrawable.getIntrinsicHeight();
-    //获取布局中的高度和宽度及其模式
+    // Get measured width/height and their modes
     int width = MeasureSpec.getSize(widthMeasureSpec);
     int heightMode = MeasureSpec.getMode(heightMeasureSpec);
     int height = MeasureSpec.getSize(heightMeasureSpec);
-    //设置高度
+    // Adjust height based on mode
     switch (heightMode) {
       case MeasureSpec.AT_MOST:
         height = Math.min(height, whiteKeyHeight);
@@ -129,24 +133,22 @@ public class PianoView extends View {
       default:
         break;
     }
-    //设置缩放比例
+    // Compute scale factor
     scale = (float) (height - getPaddingTop() - getPaddingBottom()) / (float) (whiteKeyHeight);
     layoutWidth = width - getPaddingLeft() - getPaddingRight();
-    //设置布局高度和宽度
+    // Set measured dimensions
     setMeasuredDimension(width, height);
   }
 
-  @Override protected void onDraw(Canvas canvas) {
-    //初始化钢琴
-    if (piano == null) {
+  @Override protected void onSizeChanged(int w, int h, int oldw, int oldh) {
+    super.onSizeChanged(w, h, oldw, oldh);
+    // Initialize piano and audio once after we know size/scale
+    if (piano == null && scale > 0) {
       minRange = 0;
       maxRange = layoutWidth;
       piano = new Piano(context, scale);
-      //获取白键
       whitePianoKeys = piano.getWhitePianoKeys();
-      //获取黑键
       blackPianoKeys = piano.getBlackPianoKeys();
-      //初始化播放器
       if (utils == null) {
         if (maxStream > 0) {
           utils = AudioUtils.getInstance(getContext(), loadAudioListener, maxStream);
@@ -159,14 +161,24 @@ public class PianoView extends View {
           Log.e(TAG, e.getMessage());
         }
       }
+      invalidate();
     }
-    //初始化白键
+  }
+
+  @Override protected void onDraw(Canvas canvas) {
+    // Piano and audio initialized in onSizeChanged()
+    // Draw white keys and note labels
     if (whitePianoKeys != null) {
       for (int i = 0; i < whitePianoKeys.size(); i++) {
         for (PianoKey key : whitePianoKeys.get(i)) {
-          paint.setColor(Color.parseColor(pianoColors[i]));
+          // Use cached parsed colors
+          if (pianoColorsInt != null && i < pianoColorsInt.length) {
+            paint.setColor(pianoColorsInt[i]);
+          } else {
+            paint.setColor(Color.parseColor(pianoColors[i]));
+          }
           key.getKeyDrawable().draw(canvas);
-          //初始化音名区域
+          // Initialize note-name area
           Rect r = key.getKeyDrawable().getBounds();
           int sideLength = (r.right - r.left) / 2;
           int left = r.left + sideLength / 2;
@@ -185,7 +197,7 @@ public class PianoView extends View {
         }
       }
     }
-    //初始化黑键
+    // Draw black keys
     if (blackPianoKeys != null) {
       for (int i = 0; i < blackPianoKeys.size(); i++) {
         for (PianoKey key : blackPianoKeys.get(i)) {
@@ -488,6 +500,9 @@ public class PianoView extends View {
   public void setPianoColors(String[] pianoColors) {
     if (pianoColors.length == 9) {
       this.pianoColors = pianoColors;
+      this.pianoColorsInt = null;
+      parsePianoColorsIfNeeded();
+      invalidate();
     }
   }
 
@@ -563,6 +578,20 @@ public class PianoView extends View {
   }
 
   //-----私有方法
+
+  // Parse and cache pianoColors into ints to avoid Color.parseColor in onDraw
+  private void parsePianoColorsIfNeeded() {
+    if (pianoColorsInt == null && pianoColors != null) {
+      pianoColorsInt = new int[pianoColors.length];
+      for (int i = 0; i < pianoColors.length; i++) {
+        try {
+          pianoColorsInt[i] = Color.parseColor(pianoColors[i]);
+        } catch (Exception e) {
+          pianoColorsInt[i] = Color.GRAY;
+        }
+      }
+    }
+  }
 
   /**
    * 将dp装换成px

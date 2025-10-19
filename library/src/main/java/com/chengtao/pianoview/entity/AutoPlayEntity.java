@@ -2,6 +2,7 @@ package com.chengtao.pianoview.entity;
 
 /**
  * Created by ChengTao on 2017-02-20.
+ * Modified and improved by GalCha on 2025-10-19.
  */
 
 import com.google.gson.annotations.SerializedName;

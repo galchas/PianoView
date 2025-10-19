@@ -2,6 +2,7 @@ package com.chengtao.pianoview.listener;
 
 /**
  * Created by ChengTao on 2016-11-26.
+ * Modified and improved by GalCha on 2025-10-19.
  */
 
 /**

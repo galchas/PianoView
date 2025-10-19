@@ -2,13 +2,14 @@ package com.chengtao.pianoview.entity;
 
 /**
  * Created by ChengTao on 2016-11-25.
+ * Modified and improved by GalCha on 2025-10-19.
  */
 
 import android.content.Context;
 import android.graphics.Rect;
 import android.graphics.drawable.Drawable;
 import android.graphics.drawable.ScaleDrawable;
-import android.support.v4.content.ContextCompat;
+import androidx.core.content.ContextCompat;
 import android.view.Gravity;
 import com.chengtao.pianoview.R;
 import com.google.gson.annotations.SerializedName;

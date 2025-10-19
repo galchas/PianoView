@@ -2,6 +2,7 @@ package com.chengtao.pianoview.entity;
 
 /**
  * Created by ChengTao on 2016-11-25.
+ * Modified and improved by GalCha on 2025-10-19.
  */
 
 import android.graphics.Rect;

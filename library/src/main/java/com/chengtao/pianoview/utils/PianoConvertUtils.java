@@ -240,7 +240,7 @@ public class PianoConvertUtils {
     List<PianoKey> pianoKeyList = new ArrayList<>();
     for (String musicNotePart : musicConfigString.split("\\|")) {
       for (String musicNote : musicNotePart.split(",")) {
-        if (!musicNote.equals("")) {
+        if (!musicNote.isEmpty()) {
           if (musicNote.matches(MUSIC_NUMBER_REGEX)) {
             addNumberKey(currentDoGroup, currentDoPosition, currentFrequency, highSet, lowSet,
                 pianoKeyList, musicNote, false, false);
