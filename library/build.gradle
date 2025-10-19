@@ -1,4 +1,5 @@
 apply plugin: 'com.android.library'
+apply plugin: 'maven-publish'
 
 android {
     namespace 'com.chengtao.pianoview'
@@ -14,10 +15,28 @@ android {
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
         }
     }
+    publishing {
+        singleVariant("release") {
+            withSourcesJar()
+        }
+    }
   compileOptions {
     sourceCompatibility JavaVersion.VERSION_1_8
     targetCompatibility JavaVersion.VERSION_1_8
   }
+}
+
+// Configure Maven publication for JitPack
+afterEvaluate {
+    publishing {
+        publications {
+            release(MavenPublication) {
+                from components.release
+                groupId = 'com.github.GalCha'
+                artifactId = 'PianoView'
+            }
+        }
+    }
 }
 
 dependencies {

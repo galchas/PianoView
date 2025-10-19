@@ -1,0 +1,6 @@
+jdk:
+  - openjdk17
+before_install:
+  - echo "sdk.dir=$ANDROID_HOME" > local.properties
+  - yes | sdkmanager --licenses
+  - yes | sdkmanager "platforms;android-35" "build-tools;35.0.0"
