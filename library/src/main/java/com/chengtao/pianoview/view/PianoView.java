@@ -47,9 +47,18 @@ public class PianoView extends View {
   // Square used to display the note name
   private RectF square;
   // Background colors for the note-name square
+  // Default octave colors (pastel palette)
+  // Order: octave 1..9
   private String pianoColors[] = {
-      "#C0C0C0", "#A52A2A", "#FF8C00", "#FFFF00", "#00FA9A", "#00CED1", "#4169E1", "#FFB6C1",
-      "#FFEBCD"
+      "#F8BBD0", // pastel pink
+      "#B3E5FC", // pastel light blue
+      "#C8E6C9", // pastel green
+      "#FFECB3", // pastel yellow
+      "#D1C4E9", // pastel purple
+      "#FFE0B2", // pastel orange
+      "#B2DFDB", // pastel teal
+      "#DCEDC8", // pastel lime
+      "#F0F4C3"  // pastel light lime
   };
   // Cached parsed colors to avoid Color.parseColor in onDraw loop
   private int[] pianoColorsInt = null;
