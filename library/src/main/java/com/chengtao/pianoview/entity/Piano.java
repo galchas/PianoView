@@ -235,7 +235,20 @@ public class Piano {
    * @return 声音ID
    */
   private int getVoiceFromResources(String voiceName) {
-    return context.getResources().getIdentifier(voiceName, "raw", context.getPackageName());
+    String normalizedVoiceName = normalizeRawResourceName(voiceName);
+    return context.getResources().getIdentifier(normalizedVoiceName, "raw", context.getPackageName());
+  }
+
+  // Support callers that still pass legacy file names like b00.ogg/b00.wav.
+  private String normalizeRawResourceName(String voiceName) {
+    if (voiceName == null) {
+      return "";
+    }
+    String normalized = voiceName.trim();
+    if (normalized.endsWith(".ogg") || normalized.endsWith(".wav")) {
+      normalized = normalized.substring(0, normalized.lastIndexOf('.'));
+    }
+    return normalized;
   }
 
   /**
