@@ -84,13 +84,18 @@ public class PianoView extends View {
     // All white keys span the full view width (no horizontal scrolling).
     FIT_WIDTH,
     // A fixed number of white keys span the full view width.
-    FIXED_VISIBLE_KEYS
+    FIXED_VISIBLE_KEYS,
+    // Every white key has a fixed physical width (in dp); the full board scrolls,
+    // so wider screens simply show more keys.
+    FIXED_KEY_WIDTH_DP
   }
 
   // Active width mode (default reproduces the original behavior)
   private WidthMode widthMode = WidthMode.INTRINSIC;
   // Number of visible white keys for FIXED_VISIBLE_KEYS mode
   private int visibleWhiteKeyCount = 0;
+  // White key width (in dp) for FIXED_KEY_WIDTH_DP mode
+  private float whiteKeyWidthDp = 0f;
   // Geometry actually used to build the current Piano (for rebuild detection)
   private float builtScaleX = -1f;
   private float builtScaleY = -1f;
@@ -100,6 +105,9 @@ public class PianoView extends View {
   private OnPianoAutoPlayListener autoPlayListener;
   // Piano event listener
   private OnPianoListener pianoListener;
+  // Scroll observers (e.g. the minimap overview, a SeekBar sync)
+  private final CopyOnWriteArrayList<OnPianoScrollListener> scrollListeners =
+      new CopyOnWriteArrayList<>();
   // Scroll progress properties for the piano view
   private int progress = 0;
   // Whether keys can be pressed
@@ -153,11 +161,20 @@ public class PianoView extends View {
         boolean hasMode = a.hasValue(R.styleable.PianoView_keyboardWidthMode);
         int modeValue = a.getInt(R.styleable.PianoView_keyboardWidthMode, 0);
         int visibleKeys = a.getInt(R.styleable.PianoView_visibleWhiteKeys, 0);
+        float keyWidthDp =
+            a.getDimension(R.styleable.PianoView_whiteKeyWidthDp, 0f) / getResources()
+                .getDisplayMetrics().density;
         if (visibleKeys > 0) {
           visibleWhiteKeyCount = visibleKeys;
         }
+        if (keyWidthDp > 0) {
+          whiteKeyWidthDp = keyWidthDp;
+        }
         if (hasMode) {
           widthMode = widthModeFromAttr(modeValue);
+        } else if (keyWidthDp > 0) {
+          // whiteKeyWidthDp implies fixed-key-width mode unless overridden.
+          widthMode = WidthMode.FIXED_KEY_WIDTH_DP;
         } else if (visibleKeys > 0) {
           // visibleWhiteKeys implies fixed-visible-keys mode unless overridden.
           widthMode = WidthMode.FIXED_VISIBLE_KEYS;
@@ -174,6 +191,8 @@ public class PianoView extends View {
         return WidthMode.FIT_WIDTH;
       case 2:
         return WidthMode.FIXED_VISIBLE_KEYS;
+      case 3:
+        return WidthMode.FIXED_KEY_WIDTH_DP;
       default:
         return WidthMode.INTRINSIC;
     }
@@ -215,6 +234,15 @@ public class PianoView extends View {
         int visibleIntrinsicWidth = visible * intrinsicWhiteKeyWidth;
         scaleX = (visibleIntrinsicWidth > 0 && layoutWidth > 0)
             ? (float) layoutWidth / (float) visibleIntrinsicWidth
+            : 1f;
+        break;
+      case FIXED_KEY_WIDTH_DP:
+        // Each white key gets a constant physical width; the board keeps its full
+        // 88-key size and scrolls, so wider screens show more keys.
+        float targetWhiteKeyWidthPx =
+            whiteKeyWidthDp * getResources().getDisplayMetrics().density;
+        scaleX = (intrinsicWhiteKeyWidth > 0 && targetWhiteKeyWidthPx > 0)
+            ? targetWhiteKeyWidthPx / (float) intrinsicWhiteKeyWidth
             : 1f;
         break;
       case INTRINSIC:
@@ -287,6 +315,20 @@ public class PianoView extends View {
       scroll(progress);
     }
     invalidate();
+    // The keyboard geometry (total width) may have changed; notify observers
+    // (e.g. the minimap) so they can re-sync even if the scroll position is unchanged.
+    notifyScrollListeners();
+  }
+
+  private void notifyScrollListeners() {
+    if (!scrollListeners.isEmpty()) {
+      int pianoWidth = getPianoWidth();
+      int layoutWidth = getLayoutWidth();
+      int scrollX = getScrollX();
+      for (OnPianoScrollListener listener : scrollListeners) {
+        listener.onPianoScroll(scrollX, pianoWidth, layoutWidth);
+      }
+    }
   }
 
   private void restorePressedKeys(ArrayList<int[]> pressedIds) {
@@ -687,6 +729,23 @@ public class PianoView extends View {
   }
 
   /**
+   * 设置每个白键的固定物理宽度(dp),使琴键在任何设备上都保持相同的物理尺寸。
+   * 等价于将宽度模式设置为 {@link WidthMode#FIXED_KEY_WIDTH_DP}，键盘可水平滚动，
+   * 屏幕越宽显示的琴键越多。
+   *
+   * @param widthDp 白键宽度(dp，必须大于0)
+   */
+  public void setWhiteKeyWidthDp(float widthDp) {
+    if (widthDp <= 0) {
+      return;
+    }
+    whiteKeyWidthDp = widthDp;
+    widthMode = WidthMode.FIXED_KEY_WIDTH_DP;
+    requestLayout();
+    invalidate();
+  }
+
+  /**
    * 设置显示音名的矩形的颜色<br>
    * <b>注:一共9中颜色</b>
    *
@@ -736,6 +795,111 @@ public class PianoView extends View {
     maxRange = x + getLayoutWidth();
     this.scrollTo(x, 0);
     this.progress = progress;
+  }
+
+  /**
+   * 滚动到指定的钢琴像素位置(以整个键盘的像素坐标为准),并进行边界约束。
+   * 主要供缩略图(minimap)拖动时调用，可平滑滚动。
+   *
+   * @param pianoPixelX 目标可见区域左边缘在整个键盘中的像素位置
+   */
+  public void scrollToPixel(int pianoPixelX) {
+    int scrollableWidth = getPianoWidth() - getLayoutWidth();
+    if (scrollableWidth < 0) {
+      scrollableWidth = 0;
+    }
+    int x = pianoPixelX;
+    if (x < 0) {
+      x = 0;
+    } else if (x > scrollableWidth) {
+      x = scrollableWidth;
+    }
+    minRange = x;
+    maxRange = x + getLayoutWidth();
+    this.progress = scrollableWidth > 0 ? Math.round((float) x * 100f / scrollableWidth) : 0;
+    this.scrollTo(x, 0);
+  }
+
+  /**
+   * 注册滚动监听器(例如缩略图概览视图或与 SeekBar 同步)。
+   *
+   * @param listener 滚动监听器
+   */
+  public void addOnPianoScrollListener(OnPianoScrollListener listener) {
+    if (listener == null || scrollListeners.contains(listener)) {
+      return;
+    }
+    scrollListeners.add(listener);
+    // Push the current state immediately so observers can sync on attach.
+    listener.onPianoScroll(getScrollX(), getPianoWidth(), getLayoutWidth());
+  }
+
+  /**
+   * 移除已注册的滚动监听器。
+   *
+   * @param listener 滚动监听器
+   */
+  public void removeOnPianoScrollListener(OnPianoScrollListener listener) {
+    scrollListeners.remove(listener);
+  }
+
+  /**
+   * 设置(替换)唯一的滚动监听器,保留以兼容旧用法。
+   *
+   * @param listener 滚动监听器
+   */
+  public void setOnPianoScrollListener(OnPianoScrollListener listener) {
+    scrollListeners.clear();
+    addOnPianoScrollListener(listener);
+  }
+
+  @Override protected void onScrollChanged(int l, int t, int oldl, int oldt) {
+    super.onScrollChanged(l, t, oldl, oldt);
+    notifyScrollListeners();
+  }
+
+  /**
+   * 获取白键当前的绘制边界(整个键盘的像素坐标),供缩略图等观察者使用。
+   *
+   * @return 白键边界列表
+   */
+  public List<Rect> getWhiteKeyDrawBounds() {
+    return collectDrawBounds(whitePianoKeys);
+  }
+
+  /**
+   * 获取黑键当前的绘制边界(整个键盘的像素坐标),供缩略图等观察者使用。
+   *
+   * @return 黑键边界列表
+   */
+  public List<Rect> getBlackKeyDrawBounds() {
+    return collectDrawBounds(blackPianoKeys);
+  }
+
+  private List<Rect> collectDrawBounds(ArrayList<PianoKey[]> keys) {
+    List<Rect> bounds = new ArrayList<>();
+    if (keys != null) {
+      for (int i = 0; i < keys.size(); i++) {
+        for (PianoKey key : keys.get(i)) {
+          if (key != null && key.getKeyDrawable() != null) {
+            bounds.add(new Rect(key.getKeyDrawable().getBounds()));
+          }
+        }
+      }
+    }
+    return bounds;
+  }
+
+  /**
+   * 滚动监听接口。每当可见区域发生变化时回调。
+   */
+  public interface OnPianoScrollListener {
+    /**
+     * @param scrollX 当前水平滚动像素位置(可见区域左边缘)
+     * @param pianoWidth 整个键盘的总像素宽度
+     * @param layoutWidth 可见区域的像素宽度
+     */
+    void onPianoScroll(int scrollX, int pianoWidth, int layoutWidth);
   }
 
   /**

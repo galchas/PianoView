@@ -8,14 +8,35 @@
       fitWidth        - all 52 white keys span the full view width (no horizontal
                         scrolling); key height stays driven by the view height.
       fixedVisibleKeys- exactly "visibleWhiteKeys" white keys span the view width.
+      fixedKeyWidthDp - every white key is exactly "whiteKeyWidthDp" wide (a constant
+                        physical size on any device); the full 88-key board keeps its
+                        width and scrolls horizontally, so wider screens show more keys.
     -->
     <attr name="keyboardWidthMode" format="enum">
       <enum name="intrinsic" value="0" />
       <enum name="fitWidth" value="1" />
       <enum name="fixedVisibleKeys" value="2" />
+      <enum name="fixedKeyWidthDp" value="3" />
     </attr>
     <!-- Number of white keys to span the view width when using fixedVisibleKeys. -->
     <attr name="visibleWhiteKeys" format="integer" />
+    <!-- White key width (in dp) when using fixedKeyWidthDp. Gives keys a constant
+         physical size across devices. -->
+    <attr name="whiteKeyWidthDp" format="dimension" />
+  </declare-styleable>
+
+  <!-- Minimap/overview companion view for PianoView. -->
+  <declare-styleable name="PianoOverView">
+    <!-- Background color of the overview strip. -->
+    <attr name="overviewBackgroundColor" format="color" />
+    <!-- Fill color for the miniature white keys. -->
+    <attr name="overviewWhiteKeyColor" format="color" />
+    <!-- Fill color for the miniature black keys. -->
+    <attr name="overviewBlackKeyColor" format="color" />
+    <!-- Fill color of the highlighted (visible) window. -->
+    <attr name="overviewHighlightColor" format="color" />
+    <!-- Stroke color of the highlighted (visible) window border. -->
+    <attr name="overviewHighlightBorderColor" format="color" />
   </declare-styleable>
 
 </resources>

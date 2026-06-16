@@ -3,7 +3,7 @@
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:id="@+id/activity_main"
     android:layout_width="match_parent"
-    android:layout_height="match_parent"
+    android:layout_height="300dp"
     android:orientation="vertical"
     android:background="@drawable/background">
 
@@ -45,10 +45,19 @@
             android:background="@drawable/music" />
     </LinearLayout>
 
+    <com.chengtao.pianoview.view.PianoOverView
+        android:id="@+id/pov"
+        android:layout_width="match_parent"
+        android:layout_height="44dp"
+        android:layout_marginStart="10dp"
+        android:layout_marginEnd="10dp"
+        android:layout_marginBottom="6dp" />
+
     <com.chengtao.pianoview.view.PianoView
         android:id="@+id/pv"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
-        app:keyboardWidthMode="intrinsic">
+        app:keyboardWidthMode="fixedKeyWidthDp"
+        app:whiteKeyWidthDp="48dp">
     </com.chengtao.pianoview.view.PianoView>
 </LinearLayout>

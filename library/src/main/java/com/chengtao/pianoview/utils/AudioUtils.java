@@ -60,6 +60,8 @@ public class AudioUtils implements LoadAudioMessage {
   private boolean isLoadFinish = false;
   //是否正在加载
   private boolean isLoading = false;
+  //是否已释放
+  private volatile boolean released = false;
   //用于处理进度消息
   private Handler handler;
   private AudioManager audioManager;
@@ -266,9 +268,16 @@ public class AudioUtils implements LoadAudioMessage {
   }
 
   private void playByPosition(boolean isWhite, int position) {
+    // 已释放或资源不可用时直接返回，避免异步播放时的空指针
+    if (released || pool == null) {
+      return;
+    }
     // 获取已知的sampleId
     SparseIntArray map = isWhite ? whiteKeyMusics : blackKeyMusics;
     SparseIntArray resIds = isWhite ? whiteKeyResIds : blackKeyResIds;
+    if (map == null || resIds == null) {
+      return;
+    }
     int sampleId = map.get(position, 0);
     if (sampleId != 0) {
       if (loadedSamples.get(sampleId, false)) {
@@ -291,6 +300,9 @@ public class AudioUtils implements LoadAudioMessage {
   }
 
   private void play(int soundId) {
+    if (released || pool == null) {
+      return;
+    }
     float volume = 1;
     if (audioManager != null) {
       float actualVolume = (float) audioManager.getStreamVolume(AudioManager.STREAM_MUSIC);
@@ -307,13 +319,18 @@ public class AudioUtils implements LoadAudioMessage {
    * 结束
    */
   public void stop() {
+    released = true;
     context = null;
-    pool.release();
-    pool = null;
-    whiteKeyMusics.clear();
-    whiteKeyMusics = null;
-    blackKeyMusics.clear();
-    blackKeyMusics = null;
+    if (pool != null) {
+      pool.release();
+      pool = null;
+    }
+    if (whiteKeyMusics != null) {
+      whiteKeyMusics.clear();
+    }
+    if (blackKeyMusics != null) {
+      blackKeyMusics.clear();
+    }
   }
 
   @Override public void sendStartMessage() {

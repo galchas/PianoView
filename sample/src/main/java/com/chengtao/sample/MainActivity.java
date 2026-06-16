@@ -19,6 +19,7 @@ import com.chengtao.pianoview.listener.OnLoadAudioListener;
 import com.chengtao.pianoview.listener.OnPianoAutoPlayListener;
 import com.chengtao.pianoview.listener.OnPianoListener;
 import com.chengtao.pianoview.utils.AutoPlayUtils;
+import com.chengtao.pianoview.view.PianoOverView;
 import com.chengtao.pianoview.view.PianoView;
 import java.io.IOException;
 import java.util.ArrayList;
@@ -30,11 +31,13 @@ import java.util.ArrayList;
   private static final String CONFIG_FILE_NAME = "simple_little_star_config";
   private static final boolean USE_CONFIG_FILE = true;
   private PianoView pianoView;
+  private PianoOverView pianoOverView;
   private SeekBar seekBar;
   private Button leftArrow;
   private Button rightArrow;
   private Button btnMusic;
   private int scrollProgress = 0;
+  private boolean suppressSeekBar = false;
   private final static float SEEKBAR_OFFSET_SIZE = -12;
   //
   private boolean isPlay = false;
@@ -51,6 +54,20 @@ import java.util.ArrayList;
     //view
     pianoView = findViewById(R.id.pv);
     pianoView.setSoundPollMaxStream(10);
+    pianoOverView = findViewById(R.id.pov);
+    // Link the minimap overview to the piano so it marks the visible area
+    // and can be dragged to scroll.
+    pianoOverView.attachTo(pianoView);
+    // Keep the SeekBar in sync when the piano is scrolled by the minimap or auto-play.
+    pianoView.addOnPianoScrollListener((scrollX, pianoWidth, layoutWidth) -> {
+      int scrollable = pianoWidth - layoutWidth;
+      int prog = scrollable > 0 ? Math.round(scrollX * 100f / scrollable) : 0;
+      if (seekBar != null && prog != seekBar.getProgress()) {
+        suppressSeekBar = true;
+        seekBar.setProgress(prog);
+        suppressSeekBar = false;
+      }
+    });
     seekBar = findViewById(R.id.sb);
     seekBar.setThumbOffset((int) convertDpToPixel(SEEKBAR_OFFSET_SIZE));
     leftArrow = findViewById(R.id.iv_left_arrow);
@@ -66,15 +83,28 @@ import java.util.ArrayList;
     btnMusic.setOnClickListener(this);
     // Long-press the music button to toggle the keyboard width mode
     // (INTRINSIC = scrollable, FIT_WIDTH = all 88 keys span the width with tall keys).
+    // Long-press the music button to cycle through the keyboard width modes.
     btnMusic.setOnLongClickListener(view -> {
-      PianoView.WidthMode next =
-          pianoView.getKeyboardWidthMode() == PianoView.WidthMode.FIT_WIDTH
-              ? PianoView.WidthMode.INTRINSIC
-              : PianoView.WidthMode.FIT_WIDTH;
-      pianoView.setKeyboardWidthMode(next);
+      PianoView.WidthMode current = pianoView.getKeyboardWidthMode();
+      switch (current) {
+        case INTRINSIC:
+          pianoView.setKeyboardWidthMode(PianoView.WidthMode.FIT_WIDTH);
+          break;
+        case FIT_WIDTH:
+          pianoView.setVisibleWhiteKeyCount(14); // implies FIXED_VISIBLE_KEYS
+          break;
+        case FIXED_VISIBLE_KEYS:
+          pianoView.setWhiteKeyWidthDp(48f); // implies FIXED_KEY_WIDTH_DP
+          break;
+        case FIXED_KEY_WIDTH_DP:
+        default:
+          pianoView.setKeyboardWidthMode(PianoView.WidthMode.INTRINSIC);
+          break;
+      }
       seekBar.setProgress(0);
       scrollProgress = 0;
-      Toast.makeText(this, "Width mode: " + next, Toast.LENGTH_SHORT).show();
+      Toast.makeText(this, "Width mode: " + pianoView.getKeyboardWidthMode(),
+          Toast.LENGTH_SHORT).show();
       return true;
     });
     //init
@@ -207,6 +237,9 @@ import java.util.ArrayList;
   }
 
   @Override public void onProgressChanged(SeekBar seekBar, int i, boolean b) {
+    if (suppressSeekBar) {
+      return;
+    }
     pianoView.scroll(i);
   }
 

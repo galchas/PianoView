@@ -41,7 +41,7 @@ afterEvaluate {
                 from components.release
                 groupId = 'com.github.galchas'
                 artifactId = 'PianoView'
-                version = '1.2.6'
+                version = '1.2.8'
             }
         }
     }
