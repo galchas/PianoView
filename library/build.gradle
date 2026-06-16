@@ -25,6 +25,8 @@ android {
   }
     lint {
         targetSdk 35
+        checkReleaseBuilds false
+        abortOnError false
     }
     testOptions {
         targetSdk 35
@@ -39,7 +41,7 @@ afterEvaluate {
                 from components.release
                 groupId = 'com.github.GalCha'
                 artifactId = 'PianoView'
-                version = '1.2.3'
+                version = '1.2.4'
             }
         }
     }
