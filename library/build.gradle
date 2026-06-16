@@ -39,9 +39,9 @@ afterEvaluate {
         publications {
             release(MavenPublication) {
                 from components.release
-                groupId = 'com.github.GalCha'
+                groupId = 'com.github.galchas'
                 artifactId = 'PianoView'
-                version = '1.2.5'
+                version = '1.2.6'
             }
         }
     }

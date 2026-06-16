@@ -18,6 +18,20 @@ allprojects {
         google()
         maven { url 'https://jitpack.io' }
     }
+    // Align the legacy kotlin-stdlib-jdk7/jdk8 artifacts with the resolved
+    // kotlin-stdlib version. Since Kotlin 1.8 merged the jdk7/jdk8 classes
+    // into the main stdlib, leaving these at their old transitive 1.6.21
+    // version causes duplicate-class failures (checkDuplicateClasses). We do
+    // NOT pin kotlin-stdlib itself, so AGP is free to resolve it.
+    configurations.all {
+        resolutionStrategy.eachDependency { details ->
+            if (details.requested.group == 'org.jetbrains.kotlin' &&
+                (details.requested.name == 'kotlin-stdlib-jdk7' ||
+                 details.requested.name == 'kotlin-stdlib-jdk8')) {
+                details.useVersion '1.8.22'
+            }
+        }
+    }
 }
 
 task clean(type: Delete) {
