@@ -35,28 +35,49 @@ public class Piano {
   //钢琴总宽度
   private int pianoWith = 0;
   /**
-   * 承载钢琴的布局的高度,用于初始化黑白键的高度和宽度
+   * 水平缩放比例,用于初始化黑白键的宽度和水平位置(独立于高度)
    */
-  private float scale = 0;
+  private float scaleX = 0;
+  /**
+   * 垂直缩放比例,用于初始化黑白键的高度
+   */
+  private float scaleY = 0;
   //上下文
   private Context context;
 
-  //构造函数
+  /**
+   * 单一缩放比例构造函数,用于向后兼容(宽高使用相同的缩放比例)
+   *
+   * @param context 上下文
+   * @param scale 宽高共用的缩放比例
+   */
   public Piano(Context context, float scale) {
+    this(context, scale, scale);
+  }
+
+  /**
+   * 独立宽高缩放比例构造函数
+   *
+   * @param context 上下文
+   * @param scaleX 水平(宽度)缩放比例
+   * @param scaleY 垂直(高度)缩放比例
+   */
+  public Piano(Context context, float scaleX, float scaleY) {
     this.context = context;
-    this.scale = scale;
+    this.scaleX = scaleX;
+    this.scaleY = scaleY;
     initPiano();
   }
 
   private void initPiano() {
-    if (scale > 0) {
+    if (scaleX > 0 && scaleY > 0) {
       //获取黑键和白键的高度和宽度
       Drawable blackDrawable = ContextCompat.getDrawable(context, R.drawable.black_piano_key);
       Drawable whiteDrawable = ContextCompat.getDrawable(context, R.drawable.white_piano_key);
-      blackKeyWidth = blackDrawable.getIntrinsicWidth();
-      blackKeyHeight = (int) ((float) blackDrawable.getIntrinsicHeight() * scale);
-      whiteKeyWidth = whiteDrawable.getIntrinsicWidth();
-      whiteKeyHeight = (int) ((float) whiteDrawable.getIntrinsicHeight() * scale);
+      blackKeyWidth = (int) ((float) blackDrawable.getIntrinsicWidth() * scaleX);
+      blackKeyHeight = (int) ((float) blackDrawable.getIntrinsicHeight() * scaleY);
+      whiteKeyWidth = (int) ((float) whiteDrawable.getIntrinsicWidth() * scaleX);
+      whiteKeyHeight = (int) ((float) whiteDrawable.getIntrinsicHeight() * scaleY);
 
       //初始化黑键
       for (int i = 0; i < BLACK_PIANO_KEY_GROUPS; i++) {
@@ -79,7 +100,7 @@ public class Piano {
           keys[j].setPressed(false);
           keys[j].setKeyDrawable(
               new ScaleDrawable(ContextCompat.getDrawable(context, R.drawable.black_piano_key),
-                  Gravity.NO_GRAVITY, 1, scale).getDrawable());
+                  Gravity.NO_GRAVITY, 1, scaleY).getDrawable());
           setBlackKeyDrawableBounds(i, j, keys[j].getKeyDrawable());
           areaOfKey[0] = keys[j].getKeyDrawable().getBounds();
           keys[j].setAreaOfKey(areaOfKey);
@@ -131,7 +152,7 @@ public class Piano {
           mKeys[j].setPressed(false);
           mKeys[j].setKeyDrawable(
               new ScaleDrawable(ContextCompat.getDrawable(context, R.drawable.white_piano_key),
-                  Gravity.NO_GRAVITY, 1, scale).getDrawable());
+                  Gravity.NO_GRAVITY, 1, scaleY).getDrawable());
           setWhiteKeyDrawableBounds(i, j, mKeys[j].getKeyDrawable());
           pianoWith += whiteKeyWidth;
           if (i == 0) {

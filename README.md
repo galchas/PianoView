@@ -41,6 +41,53 @@ In the `XML` layout:
     android:layout_height="match_parent"/>
 ```
 
+### Independent key width (fit-to-width)
+
+By default the keyboard renders keys at their intrinsic width and scrolls
+horizontally (`intrinsic`). You can control key **width** independently of key
+**height** so the full 88-key keyboard can span the view width while keeping a
+tall, comfortable key height.
+
+XML attributes (require `xmlns:app="http://schemas.android.com/apk/res-auto"`):
+
+```xml
+<com.chengtao.pianoview.view.PianoView
+    android:id="@+id/pv"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    app:keyboardWidthMode="fitWidth"/>
+```
+
+`app:keyboardWidthMode` accepts:
+
+| Value              | Behavior                                                              |
+|--------------------|----------------------------------------------------------------------|
+| `intrinsic`        | Default. Intrinsic key width, horizontally scrollable.               |
+| `fitWidth`         | All 52 white keys span the full view width (no horizontal scrolling).|
+| `fixedVisibleKeys` | Exactly `app:visibleWhiteKeys` white keys span the view width.       |
+
+```xml
+<com.chengtao.pianoview.view.PianoView
+    ...
+    app:keyboardWidthMode="fixedVisibleKeys"
+    app:visibleWhiteKeys="14"/>
+```
+
+Programmatic API:
+
+```java
+pianoView.setKeyboardWidthMode(PianoView.WidthMode.FIT_WIDTH);
+pianoView.getKeyboardWidthMode();
+pianoView.setVisibleWhiteKeyCount(14); // implies FIXED_VISIBLE_KEYS
+```
+
+In `fitWidth` mode `getPianoWidth() == getLayoutWidth()`, so `scroll(...)`
+becomes a no-op. Height is still derived from the view height, so set any height
+you like (tall keys) and all keys remain visible edge-to-edge.
+
+In the sample app, long-press the music button to toggle between `intrinsic`
+(scrollable) and `fitWidth` (all keys, full width, tall keys).
+
 For more reference,plaese see the [sample](./sample).
 
 ## Document

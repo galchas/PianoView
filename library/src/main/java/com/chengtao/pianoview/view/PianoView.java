@@ -68,8 +68,32 @@ public class PianoView extends View {
   private Context context;
   // Layout width
   private int layoutWidth = 0;
-  // Scale factor
-  private float scale = 1;
+  // Vertical (height) scale factor, derived from the view height
+  private float scaleY = 1;
+  // Horizontal (width) scale factor, derived from the width mode
+  private float scaleX = 1;
+  // Number of white keys on an 88-key piano (used for fit-to-width math)
+  private static final int WHITE_KEY_COUNT = 52;
+
+  /**
+   * Controls how the keyboard width (key width) is computed, independently of height.
+   */
+  public enum WidthMode {
+    // Current behavior: intrinsic key width, horizontally scrollable.
+    INTRINSIC,
+    // All white keys span the full view width (no horizontal scrolling).
+    FIT_WIDTH,
+    // A fixed number of white keys span the full view width.
+    FIXED_VISIBLE_KEYS
+  }
+
+  // Active width mode (default reproduces the original behavior)
+  private WidthMode widthMode = WidthMode.INTRINSIC;
+  // Number of visible white keys for FIXED_VISIBLE_KEYS mode
+  private int visibleWhiteKeyCount = 0;
+  // Geometry actually used to build the current Piano (for rebuild detection)
+  private float builtScaleX = -1f;
+  private float builtScaleY = -1f;
   // Audio loading listener
   private OnLoadAudioListener loadAudioListener;
   // Auto-play listener
@@ -121,6 +145,38 @@ public class PianoView extends View {
     square = new RectF();
     // Pre-parse default colors to ints
     parsePianoColorsIfNeeded();
+    // Read XML attributes (width mode / visible white keys)
+    if (attrs != null) {
+      android.content.res.TypedArray a =
+          context.obtainStyledAttributes(attrs, R.styleable.PianoView, defStyleAttr, 0);
+      try {
+        boolean hasMode = a.hasValue(R.styleable.PianoView_keyboardWidthMode);
+        int modeValue = a.getInt(R.styleable.PianoView_keyboardWidthMode, 0);
+        int visibleKeys = a.getInt(R.styleable.PianoView_visibleWhiteKeys, 0);
+        if (visibleKeys > 0) {
+          visibleWhiteKeyCount = visibleKeys;
+        }
+        if (hasMode) {
+          widthMode = widthModeFromAttr(modeValue);
+        } else if (visibleKeys > 0) {
+          // visibleWhiteKeys implies fixed-visible-keys mode unless overridden.
+          widthMode = WidthMode.FIXED_VISIBLE_KEYS;
+        }
+      } finally {
+        a.recycle();
+      }
+    }
+  }
+
+  private WidthMode widthModeFromAttr(int value) {
+    switch (value) {
+      case 1:
+        return WidthMode.FIT_WIDTH;
+      case 2:
+        return WidthMode.FIXED_VISIBLE_KEYS;
+      default:
+        return WidthMode.INTRINSIC;
+    }
   }
 
   @Override protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
@@ -142,40 +198,126 @@ public class PianoView extends View {
       default:
         break;
     }
-    // Compute scale factor
-    scale = (float) (height - getPaddingTop() - getPaddingBottom()) / (float) (whiteKeyHeight);
+    // Compute vertical scale factor from the available height
+    scaleY = (float) (height - getPaddingTop() - getPaddingBottom()) / (float) (whiteKeyHeight);
     layoutWidth = width - getPaddingLeft() - getPaddingRight();
+    // Compute horizontal scale factor from the active width mode
+    int intrinsicWhiteKeyWidth = whiteKeyDrawable.getIntrinsicWidth();
+    int totalIntrinsicWhiteWidth = WHITE_KEY_COUNT * intrinsicWhiteKeyWidth;
+    switch (widthMode) {
+      case FIT_WIDTH:
+        scaleX = (totalIntrinsicWhiteWidth > 0 && layoutWidth > 0)
+            ? (float) layoutWidth / (float) totalIntrinsicWhiteWidth
+            : 1f;
+        break;
+      case FIXED_VISIBLE_KEYS:
+        int visible = visibleWhiteKeyCount > 0 ? visibleWhiteKeyCount : WHITE_KEY_COUNT;
+        int visibleIntrinsicWidth = visible * intrinsicWhiteKeyWidth;
+        scaleX = (visibleIntrinsicWidth > 0 && layoutWidth > 0)
+            ? (float) layoutWidth / (float) visibleIntrinsicWidth
+            : 1f;
+        break;
+      case INTRINSIC:
+      default:
+        // Reproduce the original behavior exactly (intrinsic key width).
+        scaleX = 1f;
+        break;
+    }
     // Set measured dimensions
     setMeasuredDimension(width, height);
   }
 
   @Override protected void onSizeChanged(int w, int h, int oldw, int oldh) {
     super.onSizeChanged(w, h, oldw, oldh);
-    // Initialize piano and audio once after we know size/scale
-    if (piano == null && scale > 0) {
-      minRange = 0;
-      maxRange = layoutWidth;
-      piano = new Piano(context, scale);
-      whitePianoKeys = piano.getWhitePianoKeys();
-      blackPianoKeys = piano.getBlackPianoKeys();
-      if (utils == null) {
-        if (maxStream > 0) {
-          utils = AudioUtils.getInstance(getContext(), loadAudioListener, maxStream);
-        } else {
-          utils = AudioUtils.getInstance(getContext(), loadAudioListener);
-        }
-        try {
-          utils.loadMusic(piano);
-        } catch (Exception e) {
-          Log.e(TAG, e.getMessage());
+    // Build (or rebuild) the keyboard now that the size/scale is known
+    ensurePiano();
+  }
+
+  /**
+   * 构建钢琴键盘。在首次测量后以及当几何参数(scaleX/scaleY/宽度模式)发生变化时调用，
+   * 以便后续的宽度/高度变化能够正确地重新布局。重建时保留按下的琴键和播放状态，
+   * 音频只在首次构建时加载(音频与几何无关)。
+   */
+  private void ensurePiano() {
+    if (scaleX <= 0 || scaleY <= 0 || layoutWidth <= 0) {
+      return;
+    }
+    boolean geometryChanged =
+        piano == null || builtScaleX != scaleX || builtScaleY != scaleY;
+    if (!geometryChanged) {
+      return;
+    }
+    // Capture currently pressed keys so we can restore them after the rebuild
+    ArrayList<int[]> pressedIds = new ArrayList<>();
+    for (PianoKey key : pressedKeys) {
+      pressedIds.add(
+          new int[] { key.getType().getValue(), key.getGroup(), key.getPositionOfGroup() });
+    }
+    pressedKeys.clear();
+
+    piano = new Piano(context, scaleX, scaleY);
+    whitePianoKeys = piano.getWhitePianoKeys();
+    blackPianoKeys = piano.getBlackPianoKeys();
+    builtScaleX = scaleX;
+    builtScaleY = scaleY;
+
+    // Load audio only once; it is keyed by voice/position and geometry-independent
+    if (utils == null) {
+      if (maxStream > 0) {
+        utils = AudioUtils.getInstance(getContext(), loadAudioListener, maxStream);
+      } else {
+        utils = AudioUtils.getInstance(getContext(), loadAudioListener);
+      }
+      try {
+        utils.loadMusic(piano);
+      } catch (Exception e) {
+        Log.e(TAG, e.getMessage());
+      }
+    }
+
+    // Restore pressed state onto the freshly built keys (without replaying audio)
+    if (!pressedIds.isEmpty()) {
+      restorePressedKeys(pressedIds);
+    }
+
+    // Re-apply the current scroll position against the new geometry
+    minRange = 0;
+    maxRange = layoutWidth;
+    if (progress != 0) {
+      scroll(progress);
+    }
+    invalidate();
+  }
+
+  private void restorePressedKeys(ArrayList<int[]> pressedIds) {
+    restorePressedKeysIn(whitePianoKeys, pressedIds);
+    restorePressedKeysIn(blackPianoKeys, pressedIds);
+  }
+
+  private void restorePressedKeysIn(ArrayList<PianoKey[]> keys, ArrayList<int[]> pressedIds) {
+    if (keys == null) {
+      return;
+    }
+    for (int i = 0; i < keys.size(); i++) {
+      for (PianoKey key : keys.get(i)) {
+        for (int[] id : pressedIds) {
+          if (key.getType().getValue() == id[0]
+              && key.getGroup() == id[1]
+              && key.getPositionOfGroup() == id[2]) {
+            key.getKeyDrawable().setState(new int[] { android.R.attr.state_pressed });
+            key.setPressed(true);
+            pressedKeys.add(key);
+            break;
+          }
         }
       }
-      invalidate();
     }
   }
 
   @Override protected void onDraw(Canvas canvas) {
-    // Piano and audio initialized in onSizeChanged()
+    // Piano and audio initialized in onSizeChanged()/ensurePiano()
+    // Rebuild if a runtime geometry change (e.g. width mode) re-measured scaleX/scaleY
+    ensurePiano();
     // Draw white keys and note labels
     if (whitePianoKeys != null) {
       for (int i = 0; i < whitePianoKeys.size(); i++) {
@@ -501,6 +643,50 @@ public class PianoView extends View {
   }
 
   /**
+   * 设置键盘宽度模式(独立于高度控制键宽)。
+   * <ul>
+   *   <li>{@link WidthMode#INTRINSIC}: 原始行为,键使用固有宽度,可水平滚动。</li>
+   *   <li>{@link WidthMode#FIT_WIDTH}: 所有白键铺满视图宽度,无水平滚动。</li>
+   *   <li>{@link WidthMode#FIXED_VISIBLE_KEYS}: 指定数量的白键铺满视图宽度。</li>
+   * </ul>
+   *
+   * @param mode 宽度模式
+   */
+  public void setKeyboardWidthMode(WidthMode mode) {
+    if (mode == null || mode == widthMode) {
+      return;
+    }
+    widthMode = mode;
+    requestLayout();
+    invalidate();
+  }
+
+  /**
+   * 获取当前键盘宽度模式
+   *
+   * @return 当前宽度模式
+   */
+  public WidthMode getKeyboardWidthMode() {
+    return widthMode;
+  }
+
+  /**
+   * 设置在视图宽度内铺满的白键数量,独立于高度。
+   * 等价于将宽度模式设置为 {@link WidthMode#FIXED_VISIBLE_KEYS}。
+   *
+   * @param count 白键数量(必须大于0)
+   */
+  public void setVisibleWhiteKeyCount(int count) {
+    if (count <= 0) {
+      return;
+    }
+    visibleWhiteKeyCount = count;
+    widthMode = WidthMode.FIXED_VISIBLE_KEYS;
+    requestLayout();
+    invalidate();
+  }
+
+  /**
    * 设置显示音名的矩形的颜色<br>
    * <b>注:一共9中颜色</b>
    *
@@ -530,16 +716,20 @@ public class PianoView extends View {
    * @param progress 移动百分比
    */
   public void scroll(int progress) {
+    int scrollableWidth = getPianoWidth() - getLayoutWidth();
+    if (scrollableWidth < 0) {
+      scrollableWidth = 0;
+    }
     int x;
     switch (progress) {
       case 0:
         x = 0;
         break;
       case 100:
-        x = getPianoWidth() - getLayoutWidth();
+        x = scrollableWidth;
         break;
       default:
-        x = (int) (((float) progress / 100f) * (float) (getPianoWidth() - getLayoutWidth()));
+        x = (int) (((float) progress / 100f) * (float) scrollableWidth);
         break;
     }
     minRange = x;
@@ -682,8 +872,11 @@ public class PianoView extends View {
             }
           }
           if (left < minRange || right > maxRange) {//不在当前可见区域的范围之类
-            int progress = (int) ((float) left * 100 / (float) getPianoWidth());
-            scroll(progress);
+            int pianoWidth = getPianoWidth();
+            if (pianoWidth > 0) {
+              int progress = (int) ((float) left * 100 / (float) pianoWidth);
+              scroll(progress);
+            }
           }
         }
       }

@@ -64,6 +64,19 @@ import java.util.ArrayList;
     rightArrow.setOnClickListener(this);
     leftArrow.setOnClickListener(this);
     btnMusic.setOnClickListener(this);
+    // Long-press the music button to toggle the keyboard width mode
+    // (INTRINSIC = scrollable, FIT_WIDTH = all 88 keys span the width with tall keys).
+    btnMusic.setOnLongClickListener(view -> {
+      PianoView.WidthMode next =
+          pianoView.getKeyboardWidthMode() == PianoView.WidthMode.FIT_WIDTH
+              ? PianoView.WidthMode.INTRINSIC
+              : PianoView.WidthMode.FIT_WIDTH;
+      pianoView.setKeyboardWidthMode(next);
+      seekBar.setProgress(0);
+      scrollProgress = 0;
+      Toast.makeText(this, "Width mode: " + next, Toast.LENGTH_SHORT).show();
+      return true;
+    });
     //init
     if (USE_CONFIG_FILE) {
       AssetManager assetManager = getAssets();
