@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+  <declare-styleable name="PianoView">
+    <!--
+      Controls how key width is derived.
+      intrinsic       - current behavior: keys use their intrinsic width and the
+                        keyboard scrolls horizontally when wider than the view.
+      fitWidth        - all 52 white keys span the full view width (no horizontal
+                        scrolling); key height stays driven by the view height.
+      fixedVisibleKeys- exactly "visibleWhiteKeys" white keys span the view width.
+    -->
+    <attr name="keyboardWidthMode" format="enum">
+      <enum name="intrinsic" value="0" />
+      <enum name="fitWidth" value="1" />
+      <enum name="fixedVisibleKeys" value="2" />
+    </attr>
+    <!-- Number of white keys to span the view width when using fixedVisibleKeys. -->
+    <attr name="visibleWhiteKeys" format="integer" />
+  </declare-styleable>
+
+</resources>
