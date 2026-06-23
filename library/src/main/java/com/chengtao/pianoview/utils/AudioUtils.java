@@ -28,8 +28,8 @@ import java.util.concurrent.Executors;
  * 音频工具类
  */
 public class AudioUtils implements LoadAudioMessage {
-  //线程池,用于加载和播放音频
-  private ExecutorService service = Executors.newCachedThreadPool();
+  // 单线程加载器：只用于异步预加载，按键播放走直接调用以降低抖动
+  private ExecutorService loader = Executors.newSingleThreadExecutor();
   //最大音频数目
   private final static int MAX_STREAM = 11;
   private static AudioUtils instance = null;
@@ -65,6 +65,9 @@ public class AudioUtils implements LoadAudioMessage {
   //用于处理进度消息
   private Handler handler;
   private AudioManager audioManager;
+  private float cachedVolume = 1f;
+  private long lastVolumeUpdateMs = 0L;
+  private static final long VOLUME_REFRESH_INTERVAL_MS = 250L;
   private long currentTime;
   private int loadNum;
   private int minSoundId = -1;
@@ -78,7 +81,7 @@ public class AudioUtils implements LoadAudioMessage {
       pool = new SoundPool.Builder().setMaxStreams(maxStream)
           .setAudioAttributes(
               new AudioAttributes.Builder().setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
-                  .setUsage(AudioAttributes.USAGE_MEDIA)
+                  .setUsage(AudioAttributes.USAGE_GAME)
                   .build())
           .build();
     } else {
@@ -131,9 +134,9 @@ public class AudioUtils implements LoadAudioMessage {
             isLoadFinish = true;
             sendProgressMessage(100);
             sendFinishMessage();
-            // 静音预热，避免首次播放卡顿
+            // 静音预热，避免首次播放卡顿（单次触发，不占用持续stream）
             if (whiteKeyMusics.size() > 0) {
-              pool.play(whiteKeyMusics.get(0), 0, 0, 1, -1, 2f);
+              pool.play(whiteKeyMusics.get(0), 0f, 0f, 1, 0, 1f);
             }
           } else {
             if (System.currentTimeMillis() - currentTime >= SEND_PROGRESS_MESSAGE_BREAK_TIME) {
@@ -142,7 +145,7 @@ public class AudioUtils implements LoadAudioMessage {
             }
           }
         });
-        service.execute(() -> {
+        loader.execute(() -> {
           sendStartMessage();
           // 先收集所有resId与位置映射，便于按需加载
           ArrayList<PianoKey[]> whiteKeys = piano.getWhitePianoKeys();
@@ -222,16 +225,14 @@ public class AudioUtils implements LoadAudioMessage {
    */
   public void playMusic(final PianoKey key) {
     if (key != null && key.getType() != null) {
-      service.execute(() -> {
-        switch (key.getType()) {
-          case BLACK:
-            playBlackKeyMusic(key.getGroup(), key.getPositionOfGroup());
-            break;
-          case WHITE:
-            playWhiteKeyMusic(key.getGroup(), key.getPositionOfGroup());
-            break;
-        }
-      });
+      switch (key.getType()) {
+        case BLACK:
+          playBlackKeyMusic(key.getGroup(), key.getPositionOfGroup());
+          break;
+        case WHITE:
+          playWhiteKeyMusic(key.getGroup(), key.getPositionOfGroup());
+          break;
+      }
     }
   }
 
@@ -303,16 +304,19 @@ public class AudioUtils implements LoadAudioMessage {
     if (released || pool == null) {
       return;
     }
-    float volume = 1;
-    if (audioManager != null) {
+    long now = System.currentTimeMillis();
+    if (audioManager != null && (now - lastVolumeUpdateMs >= VOLUME_REFRESH_INTERVAL_MS)) {
       float actualVolume = (float) audioManager.getStreamVolume(AudioManager.STREAM_MUSIC);
       float maxVolume = (float) audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC);
-      volume = actualVolume / maxVolume;
+      if (maxVolume > 0f) {
+        cachedVolume = actualVolume / maxVolume;
+      }
+      if (cachedVolume <= 0f) {
+        cachedVolume = 1f;
+      }
+      lastVolumeUpdateMs = now;
     }
-    if (volume <= 0) {
-      volume = 1f;
-    }
-    pool.play(soundId, volume, volume, 1, 0, 1f);
+    pool.play(soundId, cachedVolume, cachedVolume, 1, 0, 1f);
   }
 
   /**
@@ -324,6 +328,9 @@ public class AudioUtils implements LoadAudioMessage {
     if (pool != null) {
       pool.release();
       pool = null;
+    }
+    if (loader != null && !loader.isShutdown()) {
+      loader.shutdownNow();
     }
     if (whiteKeyMusics != null) {
       whiteKeyMusics.clear();
